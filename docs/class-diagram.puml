@@ -1,0 +1,166 @@
+@startuml chit-chat Class Diagram
+skinparam classAttributeIconSize 0
+skinparam groupInheritance 2
+hide empty members
+
+' ─────────────────────────────────────────
+'  Model
+' ─────────────────────────────────────────
+package "com.chitchat.model" #f0f8ff {
+    class Chat {
+        - String sender
+        - String receiver
+        - String message
+        - Instant delivertime
+        + getSender() : String
+        + getReceiver() : String
+        + getMessage() : String
+        + getDelivertime() : Instant
+    }
+}
+
+' ─────────────────────────────────────────
+'  Config
+' ─────────────────────────────────────────
+package "com.chitchat.config" #fff8e1 {
+    class AppConfig {
+        - {static} Properties props
+        + {static} get(key : String) : String
+    }
+}
+
+package "com.chitchat.config.db" #fff8e1 {
+    class ConnectSQL {
+        + Connection con
+        - {static} ConnectSQL instance
+        - ConnectSQL()
+        + {static} getInstance() : ConnectSQL
+    }
+    class ConnectES {
+        + TransportClient client
+        - {static} ConnectES instance
+        - ConnectES()
+        + {static} getInstance() : ConnectES
+    }
+}
+
+package "com.chitchat.config.security" #fff8e1 {
+    class DataCrypt {
+        - {static} int BCRYPT_COST = 10
+        + {static} hashPassword(password : String) : String
+        + {static} checkPassword(plaintext : String, hashed : String) : boolean
+    }
+    class SessionKey {
+        + {static} generateKey() : String
+        + {static} checkSession(uname : String, loginkey : String) : boolean
+    }
+}
+
+' ─────────────────────────────────────────
+'  Repository — Chat
+' ─────────────────────────────────────────
+package "com.chitchat.repo.chat" #f0fff0 {
+    interface ChatRepo {
+        + getConnection()
+        + getAllUsers(user : String) : ArrayList<String>
+        + sendMessage(sender : String, receiver : String, message : String)
+        + getChats(sender : String, receiver : String, lasttime : Instant) : ArrayList<Chat>
+    }
+    class SQLChatRepo {
+        - ConnectSQL sql
+    }
+    class ESChatRepo {
+        - ConnectES es
+        - {static} BulkProcessor bulkProcessor
+    }
+    class FactoryChat {
+        + {static} getInstance() : ChatRepo
+    }
+}
+
+' ─────────────────────────────────────────
+'  Repository — User
+' ─────────────────────────────────────────
+package "com.chitchat.repo.user" #f0fff0 {
+    interface UserRepo {
+        + getConnection()
+        + userLogin(uname : String, password : String) : boolean
+        + addUser(uname : String, password : String) : boolean
+        + userExist(uname : String) : boolean
+        + setKey(uname : String, sessionkey : String)
+        + checkKey(uname : String, sessionkey : String) : boolean
+    }
+    class SQLUserRepo {
+        - ConnectSQL sql
+    }
+    class ESUserRepo {
+        - ConnectES es
+    }
+    class FactoryUser {
+        + {static} getInstance() : UserRepo
+    }
+}
+
+' ─────────────────────────────────────────
+'  Controllers
+' ─────────────────────────────────────────
+package "com.chitchat.controller" #fdf0ff {
+    class LoginController {
+        + doPost(req, res)
+    }
+    class AddUserController {
+        + doPost(req, res)
+    }
+    class ChatController {
+        + doPost(req, res)
+    }
+    class LogoutController {
+        + doPost(req, res)
+    }
+    class ContactsController {
+        + doPost(req, res)
+    }
+}
+
+' ─────────────────────────────────────────
+'  Inheritance / Implementation
+' ─────────────────────────────────────────
+SQLChatRepo  ..|> ChatRepo
+ESChatRepo   ..|> ChatRepo
+SQLUserRepo  ..|> UserRepo
+ESUserRepo   ..|> UserRepo
+
+' ─────────────────────────────────────────
+'  Factory
+' ─────────────────────────────────────────
+FactoryChat  ..> SQLChatRepo  : «creates»
+FactoryChat  ..> ESChatRepo   : «creates»
+FactoryUser  ..> SQLUserRepo  : «creates»
+FactoryUser  ..> ESUserRepo   : «creates»
+
+' ─────────────────────────────────────────
+'  DB connections
+' ─────────────────────────────────────────
+ConnectSQL  ..> AppConfig : reads credentials
+ConnectES   ..> AppConfig : reads credentials
+
+' ─────────────────────────────────────────
+'  Security
+' ─────────────────────────────────────────
+
+' ─────────────────────────────────────────
+'  Model usage
+' ─────────────────────────────────────────
+SQLChatRepo ..> Chat : «creates»
+ESChatRepo  ..> Chat : «creates»
+
+' ─────────────────────────────────────────
+'  Controllers → Services
+' ─────────────────────────────────────────
+LoginController    ..> FactoryUser  : authenticate
+AddUserController  ..> FactoryUser  : register
+ChatController     ..> FactoryChat  : sendMessage
+LogoutController   ..> FactoryUser  : clearKey
+
+
+@enduml

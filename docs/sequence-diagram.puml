@@ -1,0 +1,122 @@
+@startuml chit-chat Sequence Diagram
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+actor User as U
+participant "Browser\n(JSP)" as JSP
+participant "LoginController" as LC
+participant "AddUserController" as AUC
+participant "ContactsController" as CC
+participant "ChatController" as CHC
+participant "FetchChat.jsp" as FC
+participant "LogoutController" as LGC
+participant "FactoryUser\n/ FactoryChat" as FAC
+participant "SQLUserRepo\n/ SQLChatRepo" as REPO
+participant "DataCrypt\n(BCrypt)" as DC
+participant "SessionKey" as SK
+database "PostgreSQL\n/ Elasticsearch" as DB
+
+' ═══════════════════════════════════════
+'  1. REGISTER
+' ═══════════════════════════════════════
+group Register
+    U -> JSP : POST /AddUserController\n(user, pass1, pass2)
+    JSP -> AUC : doPost()
+    AUC -> FAC : FactoryUser.getInstance()
+    FAC --> AUC : UserRepo
+    AUC -> REPO : userExist(uname)
+    REPO -> DB : SELECT uname
+    DB --> REPO : not found
+    REPO --> AUC : false
+    AUC -> DC : hashPassword(password)
+    DC --> AUC : BCrypt hash
+    AUC -> REPO : addUser(uname, hash)
+    REPO -> DB : INSERT INTO users
+    DB --> REPO : 1 row
+    REPO --> AUC : true
+    AUC --> U : "Account created" → Login.jsp
+end
+
+' ═══════════════════════════════════════
+'  2. LOGIN
+' ═══════════════════════════════════════
+group Login
+    U -> JSP : POST /LoginController\n(user, pass)
+    JSP -> LC : doPost()
+    LC -> FAC : FactoryUser.getInstance()
+    FAC --> LC : UserRepo
+    LC -> REPO : userLogin(uname, password)
+    REPO -> DB : SELECT upass WHERE uname=?
+    DB --> REPO : stored BCrypt hash
+    REPO -> DC : checkPassword(plain, hash)
+    DC --> REPO : true
+    REPO --> LC : true
+    LC -> SK : generateKey()
+    SK --> LC : UUID token
+    LC -> REPO : setKey(uname, token)
+    REPO -> DB : UPDATE users SET sessionkey=?
+    LC --> U : session{user, sessionkey} → Contacts.jsp
+end
+
+' ═══════════════════════════════════════
+'  3. SELECT CONTACT & OPEN CHAT
+' ═══════════════════════════════════════
+group Open Chat
+    U -> JSP : POST /ContactsController\n(receiver)
+    JSP -> CC : doPost()
+    CC -> SK : checkSession(user, sessionkey)
+    SK -> FAC : FactoryUser.getInstance()
+    FAC --> SK : UserRepo
+    SK -> REPO : checkKey(uname, key)
+    REPO -> DB : SELECT sessionkey WHERE uname=?
+    DB --> REPO : stored key
+    REPO --> SK : true
+    SK --> CC : true
+    CC --> U : session{receiver} → Chat.jsp\n(lasttime = Instant.EPOCH)
+end
+
+' ═══════════════════════════════════════
+'  4. SEND MESSAGE
+' ═══════════════════════════════════════
+group Send Message (AJAX POST every keystroke)
+    U -> CHC : POST /ChatController\n(message)
+    CHC -> SK : checkSession(user, sessionkey)
+    SK --> CHC : true
+    CHC -> FAC : FactoryChat.getInstance()
+    FAC --> CHC : ChatRepo
+    CHC -> REPO : sendMessage(sender, receiver, msg)
+    REPO -> DB : INSERT INTO chats\n(sender, receiver, message)
+    DB --> REPO : ok (delivertime = CURRENT_TIMESTAMP)
+    REPO --> CHC : void
+    CHC --> U : 200 OK
+end
+
+' ═══════════════════════════════════════
+'  5. POLL FOR NEW MESSAGES
+' ═══════════════════════════════════════
+group Fetch Messages (AJAX GET every 1 s)
+    U -> FC : GET /FetchChat.jsp
+    FC -> FAC : FactoryChat.getInstance()
+    FAC --> FC : ChatRepo
+    FC -> REPO : getChats(sender, receiver, lasttime)
+    REPO -> DB : SELECT * FROM chats\nWHERE delivertime > ?\nORDER BY delivertime ASC
+    DB --> REPO : result rows
+    REPO --> FC : ArrayList<Chat>
+    FC -> FC : update session lasttime\n= last Chat.getDelivertime()
+    FC --> U : HTML <p> fragments\n(right = sent, left = received)
+end
+
+' ═══════════════════════════════════════
+'  6. LOGOUT
+' ═══════════════════════════════════════
+group Logout
+    U -> LGC : POST /LogoutController
+    LGC -> FAC : FactoryUser.getInstance()
+    FAC --> LGC : UserRepo
+    LGC -> REPO : setKey(uname, null)
+    REPO -> DB : UPDATE users SET sessionkey=NULL
+    LGC -> JSP : session.invalidate()
+    LGC --> U : "Logged out" → Login.jsp
+end
+
+@enduml

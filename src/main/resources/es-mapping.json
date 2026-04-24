@@ -1,0 +1,39 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "user": {
+      "properties": {
+        "name": {
+          "type": "keyword"
+        },
+        "password": {
+          "type": "keyword",
+          "index": false
+        },
+        "sessionkey": {
+          "type": "keyword"
+        }
+      }
+    },
+    "chats": {
+      "properties": {
+        "sender": {
+          "type": "keyword"
+        },
+        "receiver": {
+          "type": "keyword"
+        },
+        "message": {
+          "type": "text"
+        },
+        "timestamp": {
+          "type": "date",
+          "format": "epoch_millis"
+        }
+      }
+    }
+  }
+}
